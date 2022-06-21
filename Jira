@@ -1,0 +1,339 @@
+from jira import JIRA
+import pandas as pd                       #to perform data manipulation and analysis
+import json                               #to format our dataset
+import pantab                             #to export our final output into Tableau
+
+
+
+
+
+# Access JLP Jira 
+
+from atlassian import Jira
+jira_instance = Jira(
+    url = "https://www.xxx.com/jira/",        # Include here your Jira environment url
+    username = "xxx",
+    password = "xxx",                         # Include here your Jira username and password as setup by the admin
+)
+
+
+
+
+# Get total count of tickets within JOO project
+
+a= jira_instance.jql("project = xxx", limit = 100000, fields=["total"]).    # Include here your Jira project name
+total_tickets= a.get('total')
+total_tickets
+
+
+
+
+#Extract data from Jira
+
+df_list=[]
+total_issues = jira_instance.jql("project = JOO", limit = 0)["total"]
+
+for query_number in range(0, (total_issues // 1000) + 1):
+    results = jira_instance.jql("project = JOO", limit = 1000,start = query_number * 1000, fields=
+    [
+        "summary",
+        "parent", 
+        "issuetype", 
+        "status", 
+        "priority",
+        "resolution",
+        "assignee",
+        "creator",
+        "created",
+        "resolutiondate",
+        "duedate",
+        #"issuelinks",
+        "customfield_50351",
+        "customfield_50550",
+        "customfield_25150", 
+        "customfield_50650",
+        "customfield_50350",
+        "customfield_18664",
+        "customfield_53450",
+        #"customfield_54150"         #new team dropdown
+    ])
+
+# Load the results into a DataFrame. The list of issues is under the "issues" key of the results object.
+    df = pd.json_normalize(results["issues"])
+    df_list.append(df)
+
+finaldf = pd.concat(df_list)
+
+FIELDS_OF_INTEREST = [
+        "id",
+        "fields.summary", 
+        "key", 
+        "fields.parent.id", 
+        "fields.issuetype.name", 
+        "fields.status.name", 
+        "fields.priority.name",
+        "fields.resolution.name",
+       # "fields.assignee.name",
+        "fields.creator.name", 
+        "fields.created", 
+        "fields.resolutiondate",
+        "fields.duedate",
+        #"fields.issuelinks",
+        "fields.customfield_50351.value",        #Quarter
+        "fields.customfield_50550.value",         #Year
+        "fields.customfield_25150",         #Due To
+        "fields.customfield_50650",         #We Believe
+        "fields.customfield_50350",        #Will Result In
+        #big bet
+        "fields.customfield_18664",         #team name
+        #"fields.customfield_54150",     #new team dropdown
+        "fields.customfield_53450.value"          #CCI
+
+
+    ]
+# Filter to only display the fields we care about. To actually filter them out use df = df[FIELDS_OF_INTEREST].
+finaldf = finaldf[FIELDS_OF_INTEREST]
+finaldf
+
+
+# In[16]:
+
+
+#Rename columns
+
+import pantab
+ 
+df = finaldf[FIELDS_OF_INTEREST]
+
+#Rename columns to match Tableau dashboard
+df.rename({
+    "fields.summary": "We Will Be Successful If",
+        "id":"Ticket Id",
+        "key":"Ticket Key", 
+        "fields.parent.id":"Parent Id", 
+        "fields.issuetype.name":"Ticket Type", 
+        "fields.status.name":"Status", 
+        "fields.priority.name":"Priority",
+        "fields.resolution.name":"Resolution",
+        #"fields.assignee.name":"Assignee",
+        "fields.creator.name":"Creator", 
+        "fields.created": "Created", 
+        "fields.resolutiondate":"Resolved",
+        "fields.duedate":"Due Date",
+        #"fields.issuelinks": "Issue Links",
+        "fields.customfield_50351.value":"Quarter",        #Quarter
+        "fields.customfield_50550.value":"Year",         #Year
+        "fields.customfield_25150": "Due To",         #Due To
+        "fields.customfield_50650": "We Believe",         #We Believe
+        "fields.customfield_50350":"Will Result In",       #Will Result In
+        "fields.customfield_18664": "Team Name",        #team name
+        "fields.customfield_53450.value":"CCI"         #CCI
+        #big bet
+    
+          }, axis=1, inplace=True)
+
+# save table 1 (Jira Extract)
+
+pantab.frame_to_hyper(df, "JiraExtract204 test.hyper", table="Jira Extract")
+
+
+# In[17]:
+
+
+# export csv
+
+df.to_csv('/Users/lorenzorosa/okr0905.csv')
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[21]:
+
+
+#Old Version timing out
+# Create table to see teams assigned to tickets
+
+a = jira_instance.jql("project = JOO", limit = 1000)
+df = pd.json_normalize(a["issues"])
+custom_fields = [field for field in list(df.columns) if '54150' in field]
+custom_fields_df = df[['key'] + custom_fields]
+custom_fields_df = custom_fields_df.dropna().reset_index(drop=True)
+custom_fields_df['Team'] = custom_fields_df['fields.customfield_54150'].apply(lambda x: [d['value'] for d in x])
+custom_fields_df = custom_fields_df.explode('Team').reset_index(drop=True)
+team_table = custom_fields_df[['key', 'Team']]
+
+team_table
+
+
+# In[60]:
+
+
+#New Version
+
+df_list=[]
+total_issues = jira_instance.jql("project = JOO", limit = 0)["total"]
+
+for query_number in range(0, (total_issues // 1000) + 1):
+    a = jira_instance.jql("project = JOO", limit = 1000, start = query_number * 1000)
+    df = pd.json_normalize(a["issues"])
+    
+    custom_fields = [field for field in list(df.columns) if '54150' in field]
+    custom_fields_df = df[['key'] + custom_fields]
+    custom_fields_df = custom_fields_df.dropna().reset_index(drop=True)
+    custom_fields_df['Team'] = custom_fields_df['fields.customfield_54150'].apply(lambda x: [d['value'] for d in x])
+    custom_fields_df = custom_fields_df.explode('Team').reset_index(drop=True)
+    team_table = custom_fields_df[['key', 'Team']]
+    
+    df_list.append(team_table)
+
+finalteamtable = pd.concat(df_list)
+finalteamtable
+
+
+# In[48]:
+
+
+# save table 2 (team table)
+
+pantab.frame_to_hyper(finalteamtable, "Team Table1803test.hyper", table="Team Table")
+
+
+# In[64]:
+
+
+df_list=[]
+total_issues = jira_instance.jql("project = JOO", limit = 0)["total"]
+
+for query_number in range(0, (total_issues // 1000) + 1):
+    a = jira_instance.jql("project = JOO", limit = 1000, start = query_number * 1000)
+    df_temp = pd.json_normalize(a["issues"])
+    custom_fields = [field for field in list(df.columns) if '54150' in field]
+    custom_fields_df = df[['key'] + custom_fields]
+    custom_fields_df = custom_fields_df.dropna().reset_index(drop=True)
+    custom_fields_df['Team'] = custom_fields_df['fields.customfield_54150'].apply(lambda x: [d['value'] for d in x])
+    custom_fields_df = custom_fields_df.explode('Team').reset_index(drop=True)
+    custom_fields_df = custom_fields_df[['key', 'Team']]
+    df_list.append(custom_fields_df)
+
+finaldf = pd.concat(df_list)
+
+
+# In[53]:
+
+
+# # quarter historic changes
+# # checked JOO-687 and multiple quarter changes show up in the finaldf for the same ticket
+
+# a = jira_instance.jql("project = JOO", limit = 1000, expand='changelog', fields=['changelog'])
+# df = pd.json_normalize(a["issues"])
+# dflist = []
+# for index,row in df.iterrows():
+#     if len(row['changelog.histories']) > 0:
+#         changelogdf = pd.DataFrame(row['changelog.histories'])
+#         changelogdf['fromString'] = changelogdf['items'].apply(lambda x: [d['fromString'] for d in x][0])
+#         changelogdf['toString'] = changelogdf['items'].apply(lambda x: [d['toString'] for d in x][0])
+#         changelogdf = changelogdf[['fromString','toString']]
+#         changelogdf['key'] = row['key']
+#         dflist.append(changelogdf)
+#     else:
+#         continue
+
+# finaldf = pd.concat(dflist)
+
+# # keep only the quarter changes
+# mask_quarter = (finaldf['fromString'].str.len() == 2) & (finaldf['toString'].str.len() == 2)
+# historic_changes_quarter = finaldf.loc[mask_quarter]
+
+# # add year changes
+# mask_year = (finaldf['fromString'].str.len() == 4) & (finaldf['toString'].str.len() == 4)
+# historic_changes_year = finaldf.loc[mask_year]
+
+# frames = [historic_changes_quarter, historic_changes_year ]
+  
+# historic_changes = pd.concat(frames)
+
+# # added index column to the table to track sequence of changes: 1 first then 2 then...
+# historic_changes = historic_changes.reset_index(drop=True)
+# historic_changes['index'] = historic_changes.index
+# historic_changes
+
+
+# In[ ]:
+
+
+#pantab.frame_to_hyper(historic_changes, "Historic Changes.hyper", table="Historic Changes")
+
+
+# In[ ]:
+
+
+df_list=[]
+total_issues = jira_instance.jql("project = JOO", limit = 0)["total"]
+
+for query_number in range(0, (total_issues // 1000) + 1):
+    a = jira_instance.jql("project = JOO", limit = 1000, start = query_number * 1000, expand='changelog', fields=['changelog'])
+    df_temp = pd.json_normalize(a["issues"])
+    df_list.append(df_temp)
+
+finaldf = pd.concat(df_list)
+
+
+# In[7]:
+
+
+import snowflake.connector
+import pandas as pd
+from getpass import getpass
+
+
+# In[11]:
+
+
+# Prompt for Snowflake password
+snowflake_password = getpass('Snowflake password?')
+
+
+# In[20]:
+
+
+ctx = snowflake.connector.connect(
+    user='J84536357_AWB_SVC', # Replace <netdom_id> with your id
+    password=snowflake_password,
+    account='johnlewispartnership.europe-west2.gcp',
+    insecure_mode=True
+    # Optional parameters follow.  
+    #,database='LAB_DS'
+    #,schema='<schema_name>'
+    #,role='<role_name'
+    #,warehouse='SANDPIT_WH'
+    )
+
+query = "select schema_name from information_schema.schemata;"
+dat = ctx.cursor().execute(query)
+df = pd.DataFrame.from_records(iter(dat), 
+       columns=[x[0] for x in dat.description])
+
+# print out the results (in this case, the list of schemas)
+df
